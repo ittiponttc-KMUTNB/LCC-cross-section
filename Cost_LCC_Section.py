@@ -1512,7 +1512,7 @@ def generate_word_combined(
 
     # 3.1.1 สูตร PW
     next_h2(SCl, "สูตรมูลค่าปัจจุบัน (Present Worth)")
-    body("สูตรแปลงต้นทุนในอนาคตมาเป็นมูลค่าปัจจุบัน:", first_indent=False)
+    body("สูตรแปลงต้นทุนในอนาคตมาเป็นมูลค่าปัจจุบัน:", indent=False)
     p_pw = doc.add_paragraph(); p_pw.paragraph_format.left_indent = Cm(1.5)
     _set_rf(p_pw.add_run("PW = FV × (1 + i)^(-n)"), size=14, bold=True)
     for line in [
@@ -1527,7 +1527,7 @@ def generate_word_combined(
 
     # 3.1.2 สูตร EAC
     next_h2(SCl, "สูตรต้นทุนเฉลี่ยรายปี (EAC)")
-    body("สูตรแปลงมูลค่าปัจจุบันรวมเป็นต้นทุนเฉลี่ยต่อปี:", first_indent=False)
+    body("สูตรแปลงมูลค่าปัจจุบันรวมเป็นต้นทุนเฉลี่ยต่อปี:", indent=False)
     p_eac = doc.add_paragraph(); p_eac.paragraph_format.left_indent = Cm(1.5)
     _set_rf(p_eac.add_run("EAC = PW × [i × (1 + i)^n] / [(1 + i)^n - 1]"), size=14, bold=True)
     for line in [
