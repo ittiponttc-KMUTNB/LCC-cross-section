@@ -1507,26 +1507,37 @@ def generate_word_combined(
 
     SCl = make_sc(sec_lcca)
 
-    # ── 3.1 ทฤษฎีและสูตร ────────────────────────────────────────────────
+    # ── 3.1 ทฤษฎีและสูตร (แบบ LCCA_6) ──────────────────────────────────
     next_h1(SCl, "ทฤษฎีและสูตรที่ใช้ในการวิเคราะห์")
-    body("สูตรมูลค่าปัจจุบัน (Present Worth) และต้นทุนเฉลี่ยรายปี (EAC) มีดังนี้")
+
+    # 3.1.1 สูตร PW
+    next_h2(SCl, "สูตรมูลค่าปัจจุบัน (Present Worth)")
+    body("สูตรแปลงต้นทุนในอนาคตมาเป็นมูลค่าปัจจุบัน:", first_indent=False)
+    p_pw = doc.add_paragraph(); p_pw.paragraph_format.left_indent = Cm(1.5)
+    _set_rf(p_pw.add_run("PW = FV × (1 + i)^(-n)"), size=14, bold=True)
     for line in [
-        f"PW  = FV × (1 + i)^(−n)                              [i = {dr*100:.1f}%/ปี]",
-        f"EAC = PW × [i × (1+i)^n] / [(1+i)^n − 1]    [n = {n} ปี]",
-        "เมื่อ  PW = มูลค่าปัจจุบัน,  FV = ต้นทุนในอนาคต,  EAC = ต้นทุนเฉลี่ยรายปี",
+        "PW  =  มูลค่าปัจจุบัน (Present Worth)",
+        "FV  =  มูลค่าอนาคต (Future Value)",
+        f"i    =  อัตราคิดลด (Discount Rate) = {dr*100:.1f}%",
+        "n   =  จำนวนปีนับจากปัจจุบัน",
     ]:
-        p_l = doc.add_paragraph(); p_l.paragraph_format.left_indent = Cm(1.5)
-        _set_rf(p_l.add_run(line), size=14, bold=(line.startswith("PW") or line.startswith("EAC")))
+        p_l = doc.add_paragraph(); p_l.paragraph_format.left_indent = Cm(2.0)
+        _set_rf(p_l.add_run(line), size=14)
     doc.add_paragraph()
 
-    # ── 3.2 พารามิเตอร์ ──────────────────────────────────────────────────
-    next_h1(SCl, "พารามิเตอร์การวิเคราะห์")
-    _add_tbl_w(doc, ["พารามิเตอร์","ค่าที่ใช้","หมายเหตุ"], [
-        ["ระยะเวลาวิเคราะห์",  f"{n} ปี",          "ตามมาตรฐาน DOH"],
-        ["อัตราคิดลด",         f"{dr*100:.1f}%/ปี", "อัตราคิดลดทางสังคม"],
-        ["มูลค่าซากปลายโครงการ","รวม" if ss.get("lc_salvage",True) else "ไม่รวม", ""],
-        ["พื้นที่คำนวณ",        f"{tw*1000:,.0f} ตร.ม./กม.", f"กว้าง {tw:.2f} ม."],
-    ], col_widths=[5,4,7])
+    # 3.1.2 สูตร EAC
+    next_h2(SCl, "สูตรต้นทุนเฉลี่ยรายปี (EAC)")
+    body("สูตรแปลงมูลค่าปัจจุบันรวมเป็นต้นทุนเฉลี่ยต่อปี:", first_indent=False)
+    p_eac = doc.add_paragraph(); p_eac.paragraph_format.left_indent = Cm(1.5)
+    _set_rf(p_eac.add_run("EAC = PW × [i × (1 + i)^n] / [(1 + i)^n - 1]"), size=14, bold=True)
+    for line in [
+        "EAC  =  ต้นทุนเฉลี่ยรายปี (Equivalent Annual Cost)",
+        "PW   =  มูลค่าปัจจุบันรวม",
+        f"i     =  อัตราคิดลด = {dr*100:.1f}%",
+        f"n    =  ระยะเวลาวิเคราะห์ = {n} ปี",
+    ]:
+        p_l = doc.add_paragraph(); p_l.paragraph_format.left_indent = Cm(2.0)
+        _set_rf(p_l.add_run(line), size=14)
     doc.add_paragraph()
 
     # ── 3.3 ทางเลือกที่วิเคราะห์ ─────────────────────────────────────────
@@ -1538,10 +1549,30 @@ def generate_word_combined(
         "ส่วนต้นทุนบำรุงรักษาใช้ค่าจากการคำนวณ Routine Cost"
     )
     if enabled_alts:
-        alt_rows = [[a.name, a.pave_type, f"{a.construction_cost:,.2f}",
-                     f"{a.salvage_pct:.0f}%"] for a in enabled_alts]
-        _add_tbl_w(doc, ["ทางเลือก","ประเภท","ต้นทุนก่อสร้าง (บาท/ตร.ม.)","มูลค่าซาก"],
-            alt_rows, col_widths=[5,3,5,3])
+        inc_sv = ss.get("lc_salvage", True)
+        if inc_sv:
+            alt_rows = [
+                [a.name,
+                 f"{a.construction_cost:,.2f}",
+                 f"{a.construction_cost * a.area / 1e6:,.4f}",
+                 f"{a.salvage_pct:.0f}%"]
+                for a in enabled_alts
+            ]
+            _add_tbl_w(doc,
+                ["ทางเลือก", "ต้นทุนก่อสร้าง (บาท/ตร.ม.)",
+                 "ต้นทุนก่อสร้าง (ล้านบาท/กม.)", "มูลค่าซาก (%)"],
+                alt_rows, col_widths=[5.5, 4, 4, 3])
+        else:
+            alt_rows = [
+                [a.name,
+                 f"{a.construction_cost:,.2f}",
+                 f"{a.construction_cost * a.area / 1e6:,.4f}"]
+                for a in enabled_alts
+            ]
+            _add_tbl_w(doc,
+                ["ทางเลือก", "ต้นทุนก่อสร้าง (บาท/ตร.ม.)",
+                 "ต้นทุนก่อสร้าง (ล้านบาท/กม.)"],
+                alt_rows, col_widths=[6.5, 5, 5])
     doc.add_paragraph()
 
     # ── 3.4 ผลการวิเคราะห์ ───────────────────────────────────────────────
@@ -1555,15 +1586,16 @@ def generate_word_combined(
         rows_out = []
         for _, row in summary_df.iterrows():
             rows_out.append([
-                str(int(row['อันดับ'])), row['ทางเลือก'], row['ประเภทผิวทาง'],
+                str(int(row['อันดับ'])), row['ทางเลือก'],
                 f"{row['ต้นทุนก่อสร้าง (บาท/ตร.ม.)']:,.2f}",
                 f"{row['NPV (ล้านบาท/กม.)']:,.4f}",
                 f"{row['EAC (ล้านบาท/กม./ปี)']:,.4f}",
                 f"{row['EAC (บาท/ตร.ม./ปี)']:,.2f}",
             ])
         _add_tbl_w(doc,
-            ["อันดับ","ทางเลือก","ประเภท","ก่อสร้าง\n(บ./ตร.ม.)","NPV\n(ล้าน/กม.)","EAC\n(ล้าน/กม./ปี)","EAC\n(บ./ตร.ม./ปี)"],
-            rows_out, col_widths=[1.5, 4.5, 2.5, 3, 3, 3.5, 3.5])
+            ["อันดับ", "ทางเลือก", "ก่อสร้าง\n(บ./ตร.ม.)",
+             "NPV\n(ล้าน/กม.)", "EAC\n(ล้าน/กม./ปี)", "EAC\n(บ./ตร.ม./ปี)"],
+            rows_out, col_widths=[1.5, 5.5, 3, 3, 3.5, 3.5])
         doc.add_paragraph()
 
     # ── 3.5 กระแสเงินสดรายทางเลือก ──────────────────────────────────────
@@ -1573,8 +1605,23 @@ def generate_word_combined(
         "พร้อมมูลค่าปัจจุบัน (PW) โดยคิดลดกลับมา ณ ปีที่ 0 "
         "ด้วย Discount Factor = (1 + i)^(−n)"
     )
+    # build lookup NPV/EAC จาก summary_df (ชื่อตรงกับ cf_dict.keys() เสมอ)
+    _npv_eac_map = {}
+    if summary_df is not None and len(summary_df) > 0:
+        for _, _r in summary_df.iterrows():
+            _npv_eac_map[_r['ทางเลือก']] = {
+                'npv': _r['NPV (บาท/กม.)'],
+                'eac': _r['EAC (บาท/กม./ปี)'],
+            }
+
     for alt_name, cf in cf_dict.items():
         _add_hdg_w(doc, f"ทางเลือก: {alt_name}", level=2)
+        _vals = _npv_eac_map.get(alt_name, {})
+        _npv  = _vals.get('npv', 0)
+        _eac  = _vals.get('eac', 0)
+        _add_thai_para(doc,
+            f"NPV รวม = {_npv:,.0f} บาท/กม.  |  EAC = {_eac:,.0f} บาท/กม./ปี",
+            first_indent=False)
         cf_rows = []
         for _, row in cf.iterrows():
             cf_rows.append([
