@@ -574,6 +574,42 @@ def render_cross_section_tab(ss: dict = None, project_name: str = ""):
                              value=ss.get('cs_intro_p2', default_p2),
                              height=120, key="cs_intro_p2")
 
+    # ── เหตุผลในการเลือกโครงสร้างชั้นทาง ───────────────────────
+    # แสดงเฉพาะเมื่อ ptype ที่เลือก ≠ NPV ต่ำสุด
+    _best_ptype_raw = ""
+    if ss.get('_lc_sum') is not None:
+        _sdf = ss.get('_lc_sum')
+        if _sdf is not None and 'NPV (ล้านบาท/กม.)' in _sdf.columns and len(_sdf) > 0:
+            _best_row = _sdf.iloc[0]
+            _best_ptype_raw = str(_best_row.get('ประเภทผิวทาง', '')).upper()
+    _cs_is_best = (ptype.upper() in _best_ptype_raw or
+                   _best_ptype_raw in ptype.upper()) if _best_ptype_raw else True
+
+    if not _cs_is_best:
+        st.markdown("""
+        <div style="background:#FFF8E1;border:1.5px solid #F59E0B;border-left:5px solid #D97706;
+             border-radius:8px;padding:10px 16px;margin:8px 0;">
+            <span style="font-weight:700;color:#92400E;">
+                ⚠️ โครงสร้างที่เลือกไม่ใช่ NPV ต่ำสุด
+            </span><br>
+            <span style="font-size:0.87rem;color:#78350F;">
+                กรุณากรอกเหตุผลด้านล่าง — จะถูกนำไปใช้ในย่อหน้าสรุปของ Word Report อัตโนมัติ
+            </span>
+        </div>""", unsafe_allow_html=True)
+        _default_reason = (
+            "ความสามารถในการก่อสร้าง ความพร้อมของวัสดุในพื้นที่ "
+            "และความต้องการของผู้ใช้งาน"
+        )
+        ss['cs_selection_reason'] = st.text_area(
+            "📝 เหตุผลในการเลือกโครงสร้างชั้นทางนี้ (สำหรับ Word Report)",
+            value=ss.get('cs_selection_reason', _default_reason),
+            height=80,
+            key="cs_sel_reason",
+            help="ข้อความนี้จะปรากฏในย่อหน้าสรุปของรายงานว่า 'เมื่อพิจารณาปัจจัยอื่นประกอบ ได้แก่ ...'"
+        )
+    else:
+        ss['cs_selection_reason'] = ""
+
     st.divider()
 
     # ── Generate ─────────────────────────────────────────────
