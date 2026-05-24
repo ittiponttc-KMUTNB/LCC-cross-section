@@ -1079,46 +1079,82 @@ def build_cumulative(cf_dict,n,dr):
 # ─── WORD REPORT — COMBINED (Cost Structure + Routine Cost + LCCA) ────────────
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _lcca_input_hash(ss: dict) -> str:
+    """คำนวณ hash ของ input ที่ส่งผลต่อผล LCCA — ใช้ตรวจ dirty state"""
+    import hashlib, json
+    alts = ss.get("lc_alternatives") or []
+    snap = {
+        "n":       ss.get("lc_n"),
+        "dr":      round(float(ss.get("lc_dr", 0)), 6),
+        "salvage": ss.get("lc_salvage"),
+        "ka_avg":  round(float(ss.get("lc_ka_avg", 0) or 0), 6),
+        "kc_val":  round(float(ss.get("lc_kc_val", 0) or 0), 6),
+        "alts": [
+            {
+                "name":  a.name,
+                "cost":  round(float(a.construction_cost), 4),
+                "sv":    round(float(a.salvage_pct), 2),
+                "en":    a.enabled,
+                "maint": [(round(float(m.unit_cost), 4), m.frequency) for m in a.maintenance],
+                "rehab": [(round(float(r.unit_cost), 4), r.year) for r in a.rehab],
+            }
+            for a in alts
+        ],
+    }
+    return hashlib.md5(json.dumps(snap, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
 def _set_rf(run, size:int=16, bold:bool=False, italic:bool=False):
+    """Set TH SarabunPSK font — ครบทั้ง ascii/hAnsi/cs/eastAsia"""
     if not DOCX_OK: return
-    run.font.name='TH SarabunPSK'; run.font.size=Pt(size)
-    run.font.bold=bold; run.font.italic=italic
-    rPr=run._r.get_or_add_rPr(); rFonts=rPr.get_or_add_rFonts()
-    for attr in ('w:eastAsia','w:ascii','w:hAnsi'): rFonts.set(qn(attr),'TH SarabunPSK')
+    run.font.name  = 'TH SarabunPSK'
+    run.font.size  = Pt(size)
+    run.font.bold  = bold
+    run.font.italic = italic
+    rPr  = run._r.get_or_add_rPr()
+    rF   = rPr.find(qn("w:rFonts"))
+    if rF is None:
+        rF = OxmlElement("w:rFonts"); rPr.insert(0, rF)
+    for attr in ('w:ascii', 'w:hAnsi', 'w:cs', 'w:eastAsia'):
+        rF.set(qn(attr), 'TH SarabunPSK')
 
 
 def _add_thai_para(doc, text="", bold=False, first_indent=True):
+    """ย่อหน้าภาษาไทย — thaiDistribute + เยื้องบรรทัดแรก 720 twips"""
     if not DOCX_OK: return
-    p=doc.add_paragraph()
-    pPr=p._p.get_or_add_pPr()
-    jc=OxmlElement("w:jc"); jc.set(qn("w:val"),"thaiDistribute"); pPr.append(jc)
+    p   = doc.add_paragraph()
+    pPr = p._p.get_or_add_pPr()
+    jc  = OxmlElement("w:jc"); jc.set(qn("w:val"), "thaiDistribute"); pPr.append(jc)
     if first_indent:
-        ind=OxmlElement("w:ind"); ind.set(qn("w:firstLine"),"720"); pPr.append(ind)
+        ind = OxmlElement("w:ind"); ind.set(qn("w:firstLine"), "720"); pPr.append(ind)
     if text:
-        run=p.add_run(text); _set_rf(run,bold=bold)
+        run = p.add_run(text); _set_rf(run, bold=bold)
     return p
 
 
 def _add_hdg_w(doc, text, level=1, size=None):
-    p=doc.add_heading(text, level=level)
-    sz=size if size else (16 if level==1 else 15)
+    """Heading พร้อม TH SarabunPSK — level 1=16pt / level 2=15pt"""
+    p  = doc.add_heading(text, level=level)
+    sz = size if size else (16 if level == 1 else 15)
     for r in p.runs: _set_rf(r, size=sz, bold=True)
     return p
 
 
 def _add_tbl_w(doc, headers, rows, col_widths=None):
+    """Table Grid — header bold, ทุก cell ใช้ TH SarabunPSK"""
     if not DOCX_OK: return
-    t=doc.add_table(rows=1,cols=len(headers)); t.style="Table Grid"
-    t.alignment=WD_TABLE_ALIGNMENT.CENTER
+    t = doc.add_table(rows=1, cols=len(headers))
+    t.style     = "Table Grid"
+    t.alignment = WD_TABLE_ALIGNMENT.CENTER
     if col_widths:
-        for i,w in enumerate(col_widths): t.columns[i].width=Cm(w)
-    for i,h in enumerate(headers):
-        c=t.rows[0].cells[i]; c.paragraphs[0].clear()
-        _set_rf(c.paragraphs[0].add_run(str(h)),bold=True)
+        for i, w in enumerate(col_widths): t.columns[i].width = Cm(w)
+    for i, h in enumerate(headers):
+        c = t.rows[0].cells[i]; c.paragraphs[0].clear()
+        _set_rf(c.paragraphs[0].add_run(str(h)), bold=True)
     for rd in rows:
-        row=t.add_row()
-        for i,val in enumerate(rd):
-            c=row.cells[i]; c.paragraphs[0].clear()
+        row = t.add_row()
+        for i, val in enumerate(rd):
+            c = row.cells[i]; c.paragraphs[0].clear()
             _set_rf(c.paragraphs[0].add_run(str(val)))
     return t
 
@@ -1557,13 +1593,12 @@ def generate_word_combined(
     # สรุปและข้อเสนอแนะ (ท้ายรายงาน)
     # ════════════════════════════════════════════════════════════════════════
     doc.add_page_break()
-    # คำนวณเลขหัวข้อ เช่น base_sec="3.9" → "3.9.5"
     try:
         _p = base_sec.strip().split('.')
         _sec_summary = '.'.join(_p[:2]) + '.5'
     except Exception:
         _sec_summary = base_sec + '.5'
-    hdg(f"{_sec_summary}  สรุปและข้อเสนอแนะ", size=18, uline=True, sb=14)
+    hdg(f"{_sec_summary}  สรุปผลการวิเคราะห์", size=18, uline=True, sb=14)
 
     if summary_df is not None and len(summary_df) > 0:
         best  = summary_df.iloc[0]
@@ -1610,30 +1645,39 @@ def generate_word_combined(
                 f"{npv_diff:,.4f} ล้านบาท/กิโลเมตร ตลอดอายุโครงการ"
             )
 
-        # ย่อหน้า 5 — ข้อเสนอแนะ
-        body(
-            f"ดังนั้น จึงมีข้อเสนอแนะให้พิจารณาเลือกใช้ {best['ทางเลือก']} "
-            f"เป็นโครงสร้างชั้นทางสำหรับ{proj_nm} "
-            f"เนื่องจากมีต้นทุนรวมตลอดอายุการใช้งานต่ำที่สุดในบรรดาทางเลือกทั้งหมดที่วิเคราะห์ "
-            f"ทั้งนี้ผู้ออกแบบควรพิจารณาปัจจัยอื่นประกอบด้วย ได้แก่ "
-            f"ความสามารถในการก่อสร้าง ความพร้อมของวัสดุในพื้นที่ และความต้องการของลูกค้า"
-        )
+        # ย่อหน้า 5 — ข้อเสนอแนะ (ปรับตาม cross-section ที่เลือก vs NPV ต่ำสุด)
+        cs_ptype       = ss.get('cs_last_ptype', '')
+        best_ptype_raw = str(best.get('ประเภทผิวทาง', '')).upper()
+        cs_is_best_npv = (cs_ptype.upper() in best_ptype_raw or
+                          best_ptype_raw in cs_ptype.upper()) if cs_ptype else True
+        selection_reason = ss.get('cs_selection_reason', '').strip()
 
-    # ── รูปแบบหน้าตัดโครงสร้างชั้นทาง (Cross-Section) ──────────────────
-    # อยู่นอก if summary_df เพื่อให้แสดงเสมอถ้ามีรูป
+        if cs_ptype and not cs_is_best_npv:
+            # Cross-Section ≠ NPV ต่ำสุด → ใช้เหตุผลพิเศษ
+            if not selection_reason:
+                selection_reason = (
+                    "ความสามารถในการก่อสร้าง ความพร้อมของวัสดุในพื้นที่ "
+                    "และความต้องการของผู้ใช้งาน"
+                )
+            body(
+                f"อย่างไรก็ตาม เมื่อพิจารณาปัจจัยอื่นประกอบ ได้แก่ {selection_reason} "
+                f"ที่ปรึกษาจึงเลือกใช้โครงสร้างชั้นทาง{cs_ptype} "
+                f"เป็นโครงสร้างชั้นทางสำหรับ{proj_nm} "
+                f"โดยมีรูปแบบหน้าตัดแสดงดังรูปด้านล่าง"
+            )
+        else:
+            body(
+                f"ดังนั้น จึงมีข้อเสนอแนะให้พิจารณาเลือกใช้ {best['ทางเลือก']} "
+                f"เป็นโครงสร้างชั้นทางสำหรับ{proj_nm} "
+                f"เนื่องจากมีต้นทุนรวมตลอดอายุการใช้งานต่ำที่สุดในบรรดาทางเลือกทั้งหมดที่วิเคราะห์ "
+                f"ทั้งนี้ผู้ออกแบบควรพิจารณาปัจจัยอื่นประกอบด้วย ได้แก่ "
+                f"ความสามารถในการก่อสร้าง ความพร้อมของวัสดุในพื้นที่ และความต้องการของลูกค้า"
+            )
+
+    # ── รูป Cross-Section อยู่ใน section สรุปผลการวิเคราะห์ ─────────────
     img_bytes = ss.get('cs_last_img_bytes')
     if img_bytes:
         doc.add_paragraph()
-        # คำนวณเลขหัวข้อ เช่น base_sec="3.9" → "3.9.6"
-        try:
-            _parts = base_sec.strip().split('.')
-            _sec_cs = '.'.join(_parts[:2]) + '.6'
-        except Exception:
-            _sec_cs = base_sec + '.6'
-        sec_cs = f"{_sec_cs}  รูปแบบหน้าตัดโครงสร้างชั้นทาง"
-        hdg(sec_cs, size=16, uline=False, sb=10)
-        body("รูปต่อไปนี้แสดงหน้าตัดโครงสร้างชั้นทางที่เลือกใช้ "
-             "เพื่อประกอบการนำเสนอและรายงานผลการวิเคราะห์:")
         img_stream = io.BytesIO(img_bytes)
         p_img = doc.add_paragraph()
         p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -1642,17 +1686,16 @@ def generate_word_combined(
         p_type = ss.get('cs_last_ptype',  'โครงสร้างชั้นทาง')
         p_cap  = doc.add_paragraph()
         p_cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        _set_rf(p_cap.add_run(f"รูปที่ {f_no}  รูปแบบหน้าตัด {p_type}"),
-                size=14, bold=False)
+        _set_rf(p_cap.add_run(f"รูปที่ {f_no}  รูปแบบหน้าตัด {p_type}"), size=14, bold=False)
         doc.add_paragraph()
-    elif not img_bytes:
-        # แจ้งผู้ใช้ถ้ายังไม่ได้ generate รูป
+    else:
         doc.add_paragraph()
         p_warn = doc.add_paragraph()
-        _set_rf(p_warn.add_run(
-            "หมายเหตุ: ยังไม่มีรูป Cross-Section — กรุณา Generate ใน Tab 🖼️ Cross-Section ก่อน Download รายงาน"),
-            size=13, bold=False)
         p_warn.paragraph_format.left_indent = Cm(1)
+        _set_rf(p_warn.add_run(
+            "หมายเหตุ: ยังไม่มีรูป Cross-Section — "
+            "กรุณา Generate ใน Tab 🖼️ Cross-Section ก่อน Download รายงาน"),
+            size=13, bold=False)
 
     # อ้างอิง
     hdg("เอกสารอ้างอิง", size=16, uline=True, sb=12)
@@ -2414,7 +2457,32 @@ with tab_lc:
                             with rc2: alts[ai].rehab[ri2].year=st.number_input("ดำเนินการปีที่",min_value=1,max_value=n_lc,value=int(r.year),step=1,key=f"lc_ry_{ai}_{ri2}")
             ss["lc_alternatives"]=alts
             st.divider()
-            if st.button("🚀 คำนวณ LCCA",type="primary",key="lc_run",use_container_width=True):
+
+            # ── Dirty state detection ──────────────────────────────────────
+            _cur_hash = _lcca_input_hash(ss)
+            _prev_hash = ss.get("lc_result_hash", "")
+            _is_dirty = ss.get("lc_tab_result_done", False) and (_cur_hash != _prev_hash)
+
+            if _is_dirty:
+                st.markdown(
+                    '<div class="warn-band">⚠️ ข้อมูลเปลี่ยนแปลงหลังการคำนวณครั้งล่าสุด '
+                    '— กด <b>คำนวณ LCCA ใหม่</b> เพื่ออัปเดตผลลัพธ์</div>',
+                    unsafe_allow_html=True)
+
+            _btn_label = "🔄 คำนวณ LCCA ใหม่ (ข้อมูลเปลี่ยน)" if _is_dirty else "🚀 คำนวณ LCCA"
+            _btn_type  = "secondary" if _is_dirty else "primary"
+
+            if _is_dirty:
+                st.markdown("""
+                <style>
+                div[data-testid="stButton"]:has(button[kind="secondary"]#lc_run) button {
+                    background-color: #F59E0B !important;
+                    color: white !important;
+                    border: none !important;
+                }
+                </style>""", unsafe_allow_html=True)
+
+            if st.button(_btn_label, type=_btn_type, key="lc_run", use_container_width=True):
                 warns=[]
                 if not ss.get("lc_tab_routine_done"): warns.append("ยังไม่ได้คำนวณ Routine Cost")
                 if warns:
@@ -2423,6 +2491,7 @@ with tab_lc:
                     with st.spinner("กำลังคำนวณ LCCA..."):
                         sdf,cfd=analyze_lcca(alts,n_lc,dr_lc,ss["lc_salvage"])
                         ss["_lc_sum"]=sdf; ss["_lc_cf"]=cfd; ss["lc_tab_result_done"]=True
+                        ss["lc_result_hash"] = _lcca_input_hash(ss)
                     st.success("✅ คำนวณ LCCA สำเร็จ — ดูผลที่ Sub-tab 📊 ผลการวิเคราะห์")
 
     # ── Sub: ผลการวิเคราะห์ ──────────────────────────────────────────────────
