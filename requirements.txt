@@ -1,0 +1,18 @@
+# ══════════════════════════════════════════════════════
+# requirements.txt
+# PaveCost_LCCA + Cross-Section Drawing
+# รศ.ดร.อิทธิพล มีผล | KMUTNB
+# ══════════════════════════════════════════════════════
+
+# Web framework
+streamlit>=1.32.0
+
+# Data & Numerical
+numpy>=1.26.0
+pandas>=2.1.0
+
+# Visualization
+matplotlib>=3.8.0
+
+# Word Report
+python-docx>=1.1.0
